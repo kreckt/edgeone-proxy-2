@@ -47,7 +47,26 @@ export async function onRequest(context) {
       if (v) headers.set(h, v);
     });
 
-    return new Response(upstream.body, { status: upstream.status, headers });
+    // 直播这种连续不会"结束"的流实测发现一个问题：下游(播放器)读取变慢一阵子(解码跟不上、
+    // 暂停读)之后再恢复快速读取，这条连接没法完全恢复到原来的速度，会卡在一个折半左右的
+    // 低速平台出不来——之前直接 `new Response(upstream.body, ...)` 相当于把上游 fetch() 的
+    // ReadableStream 原样透传给下游，中间隔着的这一层运行时自己的流水线在下游变慢时具体是
+    // 怎么缓冲/怎么恢复的是黑盒(EdgeOne Pages Functions 不开源)，看不到内部实现，只能从外部
+    // 行为倒推着试。这里改成显式手动搬运每个 chunk，给读写两端都设一个很小的 highWaterMark
+    // (不让运行时攒一大截再整批处理)，是这类"边缘函数代理直播流卡在降速状态出不来"问题社区
+    // 里比较常见的应对方式——不确定百分之百是这同一个机制，但方向对：让背压信号尽量细粒度地
+    // 逐块传递，而不是让某一层攒一大坨之后再决定要不要减速。
+    const reader = upstream.body.getReader();
+    const body = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) { controller.close(); return; }
+        controller.enqueue(value);
+      },
+      cancel(reason) { reader.cancel(reason); },
+    }, new ByteLengthQueuingStrategy({ highWaterMark: 16384 }));
+
+    return new Response(body, { status: upstream.status, headers });
   } catch (error) {
     return new Response(`Proxy Error: ${error.message}`, { status: 502 });
   }
