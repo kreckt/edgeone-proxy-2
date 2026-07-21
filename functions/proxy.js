@@ -56,6 +56,10 @@ export async function onRequest(context) {
     // (不让运行时攒一大截再整批处理)，是这类"边缘函数代理直播流卡在降速状态出不来"问题社区
     // 里比较常见的应对方式——不确定百分之百是这同一个机制，但方向对：让背压信号尽量细粒度地
     // 逐块传递，而不是让某一层攒一大坨之后再决定要不要减速。
+    // ByteLengthQueuingStrategy 不是这个运行时的全局对象(报 "ByteLengthQueuingStrategy is not
+    // defined")——EdgeOne Pages Functions 这个 V8 隔离环境显然只实现了 Streams API 的一部分，
+    // 跟浏览器/Node 不是同一个完整集合。QueuingStrategy 本身按 spec 就是个普通对象(有
+    // highWaterMark + 可选的 size 函数)，不一定非要用那个内置类，这里手写一个等价的替代。
     const reader = upstream.body.getReader();
     const body = new ReadableStream({
       async pull(controller) {
@@ -64,7 +68,7 @@ export async function onRequest(context) {
         controller.enqueue(value);
       },
       cancel(reason) { reader.cancel(reason); },
-    }, new ByteLengthQueuingStrategy({ highWaterMark: 16384 }));
+    }, { highWaterMark: 16384, size: (chunk) => chunk.byteLength });
 
     return new Response(body, { status: upstream.status, headers });
   } catch (error) {
