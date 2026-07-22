@@ -7,8 +7,15 @@
 // 那条路的白名单没加抖音域名；换到这个腾讯云边缘节点是同样的思路（国内云厂商出口 IP 不像
 // Cloudflare 那样被针对性拉黑）。注意抖音的 CDN 认的 Referer 跟 B 站不是同一个域，所以下面
 // Referer 改成按目标域名分流，不能像之前那样写死成 bilibili.com。
-const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
-const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
+//
+// 2026-07-22 补充 douyincdn.com：之前只在解析"点播链接兜底数据"时见过 douyinvod.com/
+// douyinliving.com/zjcdn.com 这几个域名，一直没有拿真实在播的直播间验证过实际拉流地址长什么样。
+// 这次靠真实搜索接口拿到了真正在播的房间去测，发现直播拉流(flv_pull_url)给的域名其实是
+// douyincdn.com(比如 pull-q5.douyincdn.com/pull-flv-f26.douyincdn.com)，不在白名单里，直接被
+// 这个边缘函数拒了(返回 invalid target)，表现成车机播放器那边永远卡在"加载中"、白名单拒绝
+// 时的 400 响应没有 CORS 头，浏览器 fetch() 只会看到一个笼统的 Failed to fetch，不会有明确报错。
+const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com|douyincdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
+const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com|douyincdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
 
 export async function onRequest(context) {
   const { request } = context;
