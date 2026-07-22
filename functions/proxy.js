@@ -18,8 +18,16 @@
 // 观察到的都是 https 不一样，光加域名不够，正则还卡在只认 https 前缀，同一个"invalid
 // target"错误，看着像域名没加对，其实是协议前缀不匹配；DOUYIN_HOST_RE 判断 Referer 用哪个也
 // 有同样的问题，不改的话 http 的抖音直播流会被误当成 B 站请求、带上错的 Referer。
-const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.douyincdn\.com\//;
-const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.douyincdn\.com\//;
+//
+// 2026-07-22 又一次补充 douyinliving.com：跟上面 douyincdn.com 一模一样的坑，只是这次踩到
+// 的是另一个域名——douyinliving.com 当时是照抄"点播链接兜底数据"里见过的 https 形式加进
+// 白名单的，从来没拿真实在播的直播间验证过。这次车机反馈"直连失败、改走这个代理也失败"，
+// 一路排查下来发现真实直播间(比如 pull-flv-f6.douyinliving.com)给的拉流地址同样是
+// http://，被这条卡死 https 前缀的正则拒了——效果上看起来像是"代理兜底也没用"，其实代理
+// 那次请求根本没送到目标站点，白名单这一步就被本地直接拒绝了(400 invalid target)。跟
+// douyincdn.com 一样挪进 https? 那一组。
+const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.(douyincdn\.com|douyinliving\.com)\//;
+const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.(douyincdn\.com|douyinliving\.com)\//;
 
 export async function onRequest(context) {
   const { request } = context;
