@@ -14,8 +14,12 @@
 // douyincdn.com(比如 pull-q5.douyincdn.com/pull-flv-f26.douyincdn.com)，不在白名单里，直接被
 // 这个边缘函数拒了(返回 invalid target)，表现成车机播放器那边永远卡在"加载中"、白名单拒绝
 // 时的 400 响应没有 CORS 头，浏览器 fetch() 只会看到一个笼统的 Failed to fetch，不会有明确报错。
-const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com|douyincdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
-const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com|douyincdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\//;
+// 单独用 https?(不强制 https)——真实拿到的直播拉流地址是 http:// 的，跟这里其它域名一直以来
+// 观察到的都是 https 不一样，光加域名不够，正则还卡在只认 https 前缀，同一个"invalid
+// target"错误，看着像域名没加对，其实是协议前缀不匹配；DOUYIN_HOST_RE 判断 Referer 用哪个也
+// 有同样的问题，不改的话 http 的抖音直播流会被误当成 B 站请求、带上错的 Referer。
+const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.douyincdn\.com\//;
+const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|douyinliving\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.douyincdn\.com\//;
 
 export async function onRequest(context) {
   const { request } = context;
