@@ -84,6 +84,8 @@ export async function onRequest(context) {
 
     return new Response(upstream.body, { status: upstream.status, headers });
   } catch (error) {
-    return new Response(`Proxy Error: ${error.message}`, { status: 502 });
+    // 502 也带上 CORS：这样"边缘收到请求、但拉不到上游红果 CDN(被 403/RST/超时)"这种失败，浏览器能读到
+    // 真实的 Proxy Error 文本，而不是笼统的 Failed to fetch，方便区分"没部署"还是"边缘也被 CDN 拒"。
+    return new Response(`Proxy Error: ${error.message}`, { status: 502, headers: { 'Access-Control-Allow-Origin': '*' } });
   }
 }
