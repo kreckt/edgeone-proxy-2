@@ -26,8 +26,18 @@
 // http://，被这条卡死 https 前缀的正则拒了——效果上看起来像是"代理兜底也没用"，其实代理
 // 那次请求根本没送到目标站点，白名单这一步就被本地直接拒绝了(400 invalid target)。跟
 // douyincdn.com 一样挪进 https? 那一组。
-const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.(douyincdn\.com|douyinliving\.com)\//;
+//
+// 2026-08-04 补充 红果短剧(qznovelvod.com 视频直链 / fqnovel·byteimg 封面)：跟 B 站/抖音不一样——
+// 【改动①】白名单加进 .qznovelvod.com 等(视频节点号 v3-reading-videocdn30x 会变，按整域匹配，别写死子域)。
+// 【改动②】红果 CDN 不认 Referer，服务端"干净拉"(只带 Range、不带 Referer)就给；带上 bilibili.com 的
+//   Referer 反而会被防盗链判 403(本机 server.js 的 /api/hongguo/fetch 能成，正因为它不带 Referer)。
+//   所以下面对红果目标【不设 Referer】。
+// 【改动③】补上 Access-Control-Expose-Headers——原本没设，跨域下浏览器 JS 读不到 content-length/
+//   content-range，红果真版的 CustomIOLoader 要靠这俩算文件大小 + 做 seek。B 站/抖音也顺带受益。
+const ALLOWED_HOST_RE = /^https:\/\/[^/]*\.bilivideo\.com\/|^https:\/\/upos-[^/]*\.akamaized\.net\/|^https:\/\/[^/]*\.(douyinvod\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.(douyincdn\.com|douyinliving\.com)\/|^https:\/\/[^/]*\.(qznovelvod\.com|fqnovel\.com|fqnovelpic\.com|byteimg\.com)\//;
 const DOUYIN_HOST_RE = /^https:\/\/[^/]*\.(douyinvod\.com|zjcdn\.com)\/|^https:\/\/www\.douyin\.com\/aweme\/v1\/play\/|^https?:\/\/[^/]*\.(douyincdn\.com|douyinliving\.com)\//;
+// 红果目标：不设 Referer(带错 Referer 会被防盗链 403，干净拉才给)
+const HONGGUO_HOST_RE = /^https:\/\/[^/]*\.(qznovelvod\.com|fqnovel\.com|fqnovelpic\.com|byteimg\.com)\//;
 
 export async function onRequest(context) {
   const { request } = context;
@@ -46,13 +56,17 @@ export async function onRequest(context) {
 
   const target = requestUrl.searchParams.get('url');
   if (!target || !ALLOWED_HOST_RE.test(target)) {
-    return new Response('invalid target', { status: 400 });
+    // 拒绝时也带上 CORS 头，这样浏览器能读到"invalid target"这个明确原因，而不是笼统的 Failed to fetch
+    return new Response('invalid target', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
   }
 
   const upstreamHeaders = {
-    referer: DOUYIN_HOST_RE.test(target) ? 'https://www.douyin.com/' : 'https://www.bilibili.com/',
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   };
+  // 红果 CDN 不认 Referer(带上反而 403)；只有非红果目标才按域设 Referer(抖音 / B 站各自的域)
+  if (!HONGGUO_HOST_RE.test(target)) {
+    upstreamHeaders.referer = DOUYIN_HOST_RE.test(target) ? 'https://www.douyin.com/' : 'https://www.bilibili.com/';
+  }
   const range = request.headers.get('range');
   if (range) upstreamHeaders.range = range;
 
@@ -61,6 +75,8 @@ export async function onRequest(context) {
 
     const headers = new Headers();
     headers.set('Access-Control-Allow-Origin', '*');
+    // 跨域下必须显式暴露这些响应头，浏览器 JS 才读得到(CustomIOLoader 要读 content-length/content-range 算大小+seek)
+    headers.set('Access-Control-Expose-Headers', 'content-type, content-length, content-range, accept-ranges');
     ['content-type', 'content-length', 'content-range', 'accept-ranges'].forEach((h) => {
       const v = upstream.headers.get(h);
       if (v) headers.set(h, v);
